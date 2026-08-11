@@ -1,7 +1,7 @@
 {
   "name": "hh-goa-2026-id-builder",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "description": "Frame / ID Card Generator for Hacker House Goa 2026",
   "scripts": {

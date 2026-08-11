@@ -1,10 +1,10 @@
 /**
  * Renders public/og-default.png, the link preview for the tool itself.
  *
- * Individual shared cards get their own Open Graph image from the share
- * service; this is the fallback shown when someone posts the builder's URL.
- * It is generated rather than hand-drawn so it stays in step with the brand
- * tokens and the vendored fonts.
+ * The preview is the card itself, drawn by the production compositor, so it can
+ * never drift from what the tool actually outputs. Individual shared cards get
+ * their own Open Graph image from the share service; this is the fallback shown
+ * when someone posts the builder's URL.
  *
  * Usage: node scripts/make-og.mjs <dev-server-url>
  */
@@ -17,8 +17,10 @@ const out = 'public/og-default.png';
 await mkdir('public', { recursive: true });
 
 const browser = await launch();
-// 1200x630 is the size X and most other crawlers scale their preview from.
-const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
+// The card's own 2:3 geometry. Portrait previews are shown whole by Slack,
+// WhatsApp and LinkedIn; X crops them to a landscape band, which is the
+// trade-off for the preview being the real card rather than a banner.
+const page = await browser.newPage({ viewport: { width: 1080, height: 1620 } });
 
 await page.goto(new URL('og.html', base).href, { waitUntil: 'networkidle' });
 await page.waitForFunction(() => document.body.dataset.rendered === 'true', null, {

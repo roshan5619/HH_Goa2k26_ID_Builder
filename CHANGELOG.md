@@ -96,3 +96,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The beach-bag picker. Entry clearance ties the card to the event's actual four
   days instead, and dropping the chips removes a step from the flow.
+
+## [2.1.0] - 2026-08-11
+
+### Changed
+
+- The default link-preview image is now the card itself, drawn by the production
+  compositor at full 1080x1620, rather than a composed banner. A preview built
+  from the same code path as the output cannot drift from it.
+
+### Removed
+
+- The side-by-side Open Graph banner and its bespoke drawing helpers.
