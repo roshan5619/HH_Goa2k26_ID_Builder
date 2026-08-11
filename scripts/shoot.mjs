@@ -7,7 +7,7 @@
  *
  * Usage: node scripts/shoot.mjs <url> <out.png> [width] [height]
  */
-import { chromium } from '@playwright/test';
+import { launch } from './browser.mjs';
 
 const [url, out, width = '390', height = '844'] = process.argv.slice(2);
 if (!url || !out) {
@@ -15,7 +15,7 @@ if (!url || !out) {
   process.exit(1);
 }
 
-const browser = await chromium.launch();
+const browser = await launch();
 const page = await browser.newPage({
   viewport: { width: Number(width), height: Number(height) },
   deviceScaleFactor: 2,
