@@ -38,7 +38,9 @@ export default defineConfig({
   // command: bundling and running the suite in one process is enough memory
   // pressure to exhaust the heap on a modest machine.
   webServer: {
-    command: `npx vite preview --port ${PORT} --strictPort`,
+    // --host is explicit: vite preview otherwise binds a hostname that can
+    // resolve to IPv6 only, while Playwright polls 127.0.0.1 and waits forever.
+    command: `npx vite preview --port ${PORT} --strictPort --host 127.0.0.1`,
     url: BASE,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
