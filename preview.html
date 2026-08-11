@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Card render harness</title>
+    <style>
+      body {
+        margin: 0;
+        background: #2b2b2b;
+        display: flex;
+        justify-content: center;
+        padding: 16px;
+      }
+      canvas {
+        width: 540px;
+        height: 810px;
+        image-rendering: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="card" width="1080" height="1620"></canvas>
+    <script type="module" src="/src/preview.ts"></script>
+  </body>
+</html>
