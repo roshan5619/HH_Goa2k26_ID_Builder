@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vercel/
+.vite/
+*.local
+.DS_Store
+Thumbs.db
+
+# Test artefacts
+test-results/
+playwright-report/
+blob-report/
+tests/fixtures/generated/
+
+# Local render previews used while matching the card to the reference art
+.preview/
