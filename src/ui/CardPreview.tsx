@@ -111,7 +111,7 @@ export function CardPreview({ canvasRef, hasPhoto, zoom, onNudge, onZoom, onRese
           height={CARD.height}
           className="preview__canvas"
           role="img"
-          aria-label="Live preview of your Hacker House Goa 2026 builder ID card"
+          aria-label="Live preview of your Hacker House Goa 2026 builder passport"
         />
       </div>
 

@@ -1,54 +1,66 @@
 import { describe, expect, it } from 'vitest';
-import { deriveIdentity, hashString, TITLE_SPACE } from '../../src/card/builderClass';
+import {
+  deriveBuilderClass,
+  hashString,
+  mintBuilderId,
+  TITLE_SPACE,
+} from '../../src/card/builderClass';
 
-describe('deriveIdentity', () => {
+describe('deriveBuilderClass', () => {
   it('is deterministic for the same name', () => {
-    expect(deriveIdentity('Madhavan Singh')).toEqual(deriveIdentity('Madhavan Singh'));
+    expect(deriveBuilderClass('Madhavan Singh')).toEqual(deriveBuilderClass('Madhavan Singh'));
   });
 
   it('ignores case and surrounding whitespace', () => {
-    expect(deriveIdentity('  ADA   Lovelace ')).toEqual(deriveIdentity('ada lovelace'));
+    expect(deriveBuilderClass('  ADA   Lovelace ')).toEqual(deriveBuilderClass('ada lovelace'));
   });
 
-  it('gives different names different identities', () => {
-    const a = deriveIdentity('Ada Lovelace');
-    const b = deriveIdentity('Grace Hopper');
-    expect(a.builderClass).not.toEqual(b.builderClass);
+  it('gives different names different classes', () => {
+    expect(deriveBuilderClass('Ada Lovelace')).not.toEqual(deriveBuilderClass('Grace Hopper'));
   });
 
-  it('changes the title on reroll but keeps the builder ID stable', () => {
-    const first = deriveIdentity('Ada Lovelace', 0);
-    const second = deriveIdentity('Ada Lovelace', 1);
-    expect(second.builderClass).not.toEqual(first.builderClass);
-    // The ID is the builder's identifier for the event; rerolling the flavour
-    // text must not renumber them.
-    expect(second.builderId).toEqual(first.builderId);
+  it('changes on reroll', () => {
+    expect(deriveBuilderClass('Ada Lovelace', 1)).not.toEqual(deriveBuilderClass('Ada Lovelace', 0));
   });
 
-  it('falls back to a stable identity for a blank name', () => {
-    const blank = deriveIdentity('');
-    expect(blank.builderClass).toMatch(/^[A-Z-]+ [A-Z]+$/);
-    expect(blank).toEqual(deriveIdentity('   '));
-  });
-
-  it('formats the builder ID as four padded digits', () => {
-    for (const name of ['a', 'Ada', 'Grace Hopper', 'Zaha Hadid', '本田']) {
-      expect(deriveIdentity(name).builderId).toMatch(/^#HH-GOA-\d{4}$/);
-    }
+  it('falls back to a stable class for a blank name', () => {
+    expect(deriveBuilderClass('')).toMatch(/^[A-Z-]+ [A-Z]+$/);
+    expect(deriveBuilderClass('   ')).toEqual(deriveBuilderClass(''));
   });
 
   it('handles emoji and non-Latin names without throwing', () => {
-    expect(() => deriveIdentity('🌴 सर्वेश 🌊')).not.toThrow();
-    expect(deriveIdentity('सर्वेश').builderClass).toMatch(/^[A-Z-]+ [A-Z]+$/);
+    expect(() => deriveBuilderClass('🌴 सर्वेश 🌊')).not.toThrow();
+    expect(deriveBuilderClass('सर्वेश')).toMatch(/^[A-Z-]+ [A-Z]+$/);
   });
 
-  it('spreads titles across a decent share of the space', () => {
+  it('spreads classes across a decent share of the space', () => {
     const seen = new Set<string>();
-    for (let i = 0; i < 600; i += 1) seen.add(deriveIdentity(`builder ${i}`).builderClass);
+    for (let i = 0; i < 600; i += 1) seen.add(deriveBuilderClass(`builder ${i}`));
     // Collisions are expected from hashing, but a badly mixed hash would
     // collapse to a handful of titles; assert we stay well clear of that.
     expect(seen.size).toBeGreaterThan(300);
     expect(TITLE_SPACE).toBe(1600);
+  });
+});
+
+describe('mintBuilderId', () => {
+  it('is formatted as HH-GOA- plus six unambiguous characters', () => {
+    for (let i = 0; i < 50; i += 1) {
+      // No I, L, O or U: an id read off a screenshot must be unambiguous.
+      expect(mintBuilderId()).toMatch(/^HH-GOA-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{6}$/);
+    }
+  });
+
+  it('issues a different id every time, so no two cards collide', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 2000; i += 1) seen.add(mintBuilderId());
+    // 32^6 is about a billion combinations, so 2000 draws colliding even once
+    // would indicate the generator is not actually random.
+    expect(seen.size).toBe(2000);
+  });
+
+  it('does not depend on the name, unlike the builder class', () => {
+    expect(mintBuilderId()).not.toEqual(mintBuilderId());
   });
 });
 

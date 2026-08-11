@@ -470,3 +470,18 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Monospaced generated values, e.g. the passport number. */
+.field__generated--mono {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.field__note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: rgba(250, 236, 213, 0.5);
+}

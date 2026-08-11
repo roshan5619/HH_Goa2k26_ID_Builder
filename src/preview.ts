@@ -11,7 +11,7 @@ import './brand/fonts.css';
 import { renderCard, waitForFonts } from './card/renderCard';
 import { IDENTITY_TRANSFORM } from './card/geometry';
 import { qrMatrix } from './card/qr';
-import { deriveIdentity } from './card/builderClass';
+import { deriveBuilderClass, mintBuilderId } from './card/builderClass';
 
 /** Generates a stand-in portrait so the frame is not empty during layout work. */
 async function samplePhoto(width: number, height: number): Promise<ImageBitmap> {
@@ -55,14 +55,16 @@ async function main() {
 
   await waitForFonts();
   const photo = await samplePhoto(1200, 1600);
-  const identity = deriveIdentity('Madhavan Singh');
+  const identity = {
+    builderClass: deriveBuilderClass('Madhavan Singh'),
+    builderId: mintBuilderId(),
+  };
 
   renderCard(ctx, {
     data: {
       name: 'MADHAVAN SINGH',
       role: 'Full Stack Developer',
       shipping: 'Building the future',
-      beachBag: ['Coconut', 'VS Code', 'Lo-fi beats'],
       ...identity,
     },
     photo,

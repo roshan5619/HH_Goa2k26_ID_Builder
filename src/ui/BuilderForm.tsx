@@ -1,30 +1,37 @@
 /**
- * The badge fields.
+ * The document fields.
  *
- * Kept to three text inputs plus a chip picker: the brief asks for a couple of
- * quick fields, and every extra input is friction between upload and download.
- * The builder class is generated rather than typed, so it costs nothing to fill
- * in but still feels personal.
+ * Three text inputs and two generated values. Everything else the card prints —
+ * validity, authority, entry clearance, the machine-readable zone — is derived,
+ * because every additional input is friction between upload and download.
  */
 
-import { BEACH_BAG_OPTIONS, type Fields } from './useCardBuilder';
+import type { Fields } from './useCardBuilder';
 
 interface Props {
   fields: Fields;
   setField: <K extends keyof Fields>(key: K, value: Fields[K]) => void;
-  toggleBagItem: (item: string) => void;
   builderClass: string;
+  builderId: string;
   onReroll: () => void;
+  onReissue: () => void;
 }
 
-/** Long enough for real names, short enough that the banner stays readable. */
-const LIMITS = { name: 28, role: 30, shipping: 34 };
+/** Long enough for real entries, short enough that the row stays readable. */
+const LIMITS = { name: 26, role: 28, shipping: 30 };
 
-export function BuilderForm({ fields, setField, toggleBagItem, builderClass, onReroll }: Props) {
+export function BuilderForm({
+  fields,
+  setField,
+  builderClass,
+  builderId,
+  onReroll,
+  onReissue,
+}: Props) {
   return (
     <div className="form">
       <label className="field">
-        <span className="field__label">Your name</span>
+        <span className="field__label">Name</span>
         <input
           className="field__input"
           type="text"
@@ -51,7 +58,7 @@ export function BuilderForm({ fields, setField, toggleBagItem, builderClass, onR
       </label>
 
       <label className="field">
-        <span className="field__label">Currently shipping</span>
+        <span className="field__label">Now shipping</span>
         <input
           className="field__input"
           type="text"
@@ -73,25 +80,18 @@ export function BuilderForm({ fields, setField, toggleBagItem, builderClass, onR
         <output className="field__generated">{builderClass}</output>
       </div>
 
-      <fieldset className="field field--chips">
-        <legend className="field__label">Beach bag — pick up to three</legend>
-        <div className="chips">
-          {BEACH_BAG_OPTIONS.map((item) => {
-            const chosen = fields.beachBag.includes(item);
-            return (
-              <button
-                key={item}
-                type="button"
-                className={`chip${chosen ? ' chip--on' : ''}`}
-                aria-pressed={chosen}
-                onClick={() => toggleBagItem(item)}
-              >
-                {item}
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
+      <div className="field">
+        <span className="field__label">
+          Passport number
+          <button type="button" className="field__reroll" onClick={onReissue}>
+            Reissue
+          </button>
+        </span>
+        <output className="field__generated field__generated--mono">{builderId}</output>
+        <p className="field__note">
+          Issued fresh for every card, so no two passports carry the same number.
+        </p>
+      </div>
     </div>
   );
 }

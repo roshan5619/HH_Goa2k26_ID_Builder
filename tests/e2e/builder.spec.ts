@@ -52,7 +52,7 @@ test('completes upload, fill and download in one pass', async ({ page }) => {
   await page.getByPlaceholder('Building the future').fill('A difference engine');
 
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: /download card/i }).click();
+  await page.getByRole('button', { name: /download passport/i }).click();
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toBe('hh-goa-2026-ada-lovelace.png');
@@ -81,7 +81,7 @@ test('warns but still renders when the photo is tiny', async ({ page }) => {
   await upload(page, 'tiny.png');
   await expect(page.getByText(/quite small/i)).toBeVisible();
   // A warning must not block the download.
-  await expect(page.getByRole('button', { name: /download card/i })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /download passport/i })).toBeEnabled();
 });
 
 test('rejects a non-image with a readable message and stays usable', async ({ page }) => {
@@ -99,14 +99,42 @@ test('rejects a non-image with a readable message and stays usable', async ({ pa
   await expect(page.getByRole('button', { name: /change photo/i })).toBeVisible();
 });
 
-test('rerolling changes the builder class but keeps the builder ID', async ({ page }) => {
+test('rerolling changes the builder class without touching the passport number', async ({
+  page,
+}) => {
   await page.getByPlaceholder('Madhavan Singh').fill('Grace Hopper');
 
-  const output = page.locator('.field__generated');
-  const before = await output.textContent();
+  const builderClass = page.locator('.field__generated').first();
+  const passportNumber = page.locator('.field__generated--mono');
+  const classBefore = await builderClass.textContent();
+  const numberBefore = await passportNumber.textContent();
 
   await page.getByRole('button', { name: /reroll/i }).click();
-  await expect(output).not.toHaveText(before ?? '');
+
+  await expect(builderClass).not.toHaveText(classBefore ?? '');
+  await expect(passportNumber).toHaveText(numberBefore ?? '');
+});
+
+test('every issued passport number is unique', async ({ page }) => {
+  const passportNumber = page.locator('.field__generated--mono');
+  const seen = new Set<string>();
+
+  const first = (await passportNumber.textContent())?.trim() ?? '';
+  expect(first).toMatch(/^HH-GOA-[0-9ABCDEFGHJKMNPQRSTVWXYZ]{6}$/);
+  seen.add(first);
+
+  // Reissuing must never hand back a number already in circulation.
+  for (let i = 0; i < 5; i += 1) {
+    await page.getByRole('button', { name: /reissue/i }).click();
+    const next = (await passportNumber.textContent())?.trim() ?? '';
+    expect(seen.has(next)).toBe(false);
+    seen.add(next);
+  }
+
+  // A fresh visit is a fresh document, so it gets its own number too.
+  await page.reload();
+  await waitForCard(page);
+  expect(seen.has((await passportNumber.textContent())?.trim() ?? '')).toBe(false);
 });
 
 test('share falls back to the X composer when files cannot be shared', async ({ page, context }) => {

@@ -10,7 +10,7 @@ import './brand/fonts.css';
 import { COLORS, EVENT, FONTS } from './brand/tokens';
 import { renderCard, waitForFonts } from './card/renderCard';
 import { IDENTITY_TRANSFORM } from './card/geometry';
-import { deriveIdentity } from './card/builderClass';
+import { deriveBuilderClass, mintBuilderId } from './card/builderClass';
 import { qrMatrix } from './card/qr';
 import { drawText, palmSilhouetteBackdrop } from './ogBannerParts';
 
@@ -37,8 +37,8 @@ async function main() {
       name: 'YOUR NAME',
       role: 'Your stack',
       shipping: 'Something new',
-      beachBag: ['Coconut', 'VS Code', 'Lo-fi beats'],
-      ...deriveIdentity('hacker house goa'),
+      builderClass: deriveBuilderClass('hacker house goa'),
+      builderId: mintBuilderId(),
     },
     photo: null,
     transform: IDENTITY_TRANSFORM,
@@ -93,7 +93,7 @@ async function main() {
   ctx.lineTo(1130, 366);
   ctx.stroke();
 
-  drawText(ctx, 'BUILD YOUR BUILDER ID', x, 416, {
+  drawText(ctx, 'YOUR BUILDER PASSPORT', x, 416, {
     family: FONTS.sans,
     weight: 800,
     size: 42,

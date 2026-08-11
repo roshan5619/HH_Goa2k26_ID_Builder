@@ -43,20 +43,13 @@ const NOUNS = [
   'DREAMER',
 ] as const;
 
-export interface BuilderIdentity {
-  /** Two-word title, e.g. "TERMINAL WIZARD". */
-  builderClass: string;
-  /** Printed on the card, e.g. "#HH-GOA-7757". */
-  builderId: string;
-}
-
 /**
- * Derives the title and ID from a name.
+ * Derives the builder class from a name.
  *
  * @param name    the builder's name; blank falls back to a stable placeholder
  * @param variant reroll counter — same name plus same variant is always equal
  */
-export function deriveIdentity(name: string, variant = 0): BuilderIdentity {
+export function deriveBuilderClass(name: string, variant = 0): string {
   const seed = normalise(name) || 'anonymous builder';
   const hash = hashString(`${seed}#${variant}`);
 
@@ -64,12 +57,39 @@ export function deriveIdentity(name: string, variant = 0): BuilderIdentity {
   const qualifier = QUALIFIERS[hash % QUALIFIERS.length];
   const noun = NOUNS[Math.floor(hash / QUALIFIERS.length) % NOUNS.length];
 
-  // The ID is drawn from a separately salted hash: deriving it from the same
-  // value would tie the number to the title and reduce the apparent variety.
-  const idHash = hashString(`id:${seed}`);
-  const builderId = `#HH-GOA-${String(idHash % 10000).padStart(4, '0')}`;
+  return `${qualifier} ${noun}`;
+}
 
-  return { builderClass: `${qualifier} ${noun}`, builderId };
+/**
+ * Crockford-style base32: no I, L, O or U, so an ID read off a screenshot is
+ * never mistaken for a different one.
+ */
+const ID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const ID_LENGTH = 6;
+
+/**
+ * Mints a fresh, unique builder ID.
+ *
+ * Deliberately *not* derived from the name: every card issued is its own
+ * document, so two builders with the same name — or the same builder returning
+ * for a second card — each get a distinct number. 32^6 is about a billion
+ * combinations, which makes a collision across an event's worth of cards
+ * negligible without needing a server to hand out sequential numbers.
+ */
+export function mintBuilderId(): string {
+  const bytes = new Uint8Array(ID_LENGTH);
+
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    // Environments without WebCrypto still need an id; uniqueness matters more
+    // here than unpredictability, since the id is printed on the card anyway.
+    for (let i = 0; i < ID_LENGTH; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+
+  let id = '';
+  for (const byte of bytes) id += ID_ALPHABET[byte % ID_ALPHABET.length];
+  return `HH-GOA-${id}`;
 }
 
 /** Case- and whitespace-insensitive, so "Ada  LOVELACE " matches "ada lovelace". */

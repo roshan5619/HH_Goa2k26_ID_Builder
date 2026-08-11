@@ -84,11 +84,11 @@ export default function App() {
       <header className="masthead">
         <p className="masthead__kicker">{EVENT.city} · {EVENT.dates}</p>
         <h1 className="masthead__title">
-          Build your <span className="masthead__accent">builder ID</span>
+          Your <span className="masthead__accent">builder passport</span>
         </h1>
         <p className="masthead__lede">
-          Upload a photo, add two lines, and post it. No account, no waiting — the card is made on
-          your device.
+          Upload a photo, add two lines, and post it. No account, no waiting — the document is
+          issued on your device.
         </p>
       </header>
 
@@ -130,9 +130,10 @@ export default function App() {
           <BuilderForm
             fields={builder.fields}
             setField={builder.setField}
-            toggleBagItem={builder.toggleBagItem}
             builderClass={builder.identity.builderClass}
+            builderId={builder.identity.builderId}
             onReroll={builder.rerollClass}
+            onReissue={builder.reissueId}
           />
 
           <div className="actions">
@@ -142,7 +143,7 @@ export default function App() {
               onClick={() => void handleDownload()}
               disabled={!builder.ready || busy !== null}
             >
-              {busy === 'download' ? 'Saving…' : 'Download card'}
+              {busy === 'download' ? 'Saving…' : 'Download passport'}
             </button>
             <button
               type="button"

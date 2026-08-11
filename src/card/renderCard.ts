@@ -1,34 +1,38 @@
 /**
  * The card compositor.
  *
- * Draws the complete Hacker House Goa 2026 builder badge at a fixed 1080x1620
- * and is deliberately synchronous: everything it needs (fonts, the decoded
- * bitmap, the QR matrix) is prepared by the caller, so a re-render costs a few
- * milliseconds and the preview can follow keystrokes without debouncing tricks.
+ * The card is a *builder passport* rather than a badge: an event people travel
+ * to gets a travel document. The photo sits in a passport-photo panel, the
+ * fields read as printed data rows, the four event days appear as entry
+ * clearance stamps, and a machine-readable zone runs along the bottom.
  *
- * Layout constants are fractions of the card, measured from the event's
- * reference artwork (brand/SampleOutput1.png) rather than estimated, so the
- * proportions match the printed badge and the design scales cleanly if the
- * export size ever changes.
+ * Drawn at a fixed 1080x1620 and deliberately synchronous: everything it needs
+ * (fonts, the decoded bitmap, the QR matrix) is prepared by the caller, so a
+ * re-render costs a few milliseconds and the preview can follow keystrokes.
+ *
+ * Layout constants are fractions of the card, so the design scales cleanly if
+ * the export size ever changes.
  */
 
 import { CARD, COLORS, EVENT, FONTS } from '../brand/tokens';
 import { coverRect, type Transform } from './geometry';
+import { palmTree, postageStamp, scooter, sunsetScene, surfboard } from './decor';
 import {
-  circularStamp,
-  goanHouse,
-  palmTree,
-  postageStamp,
-  scooter,
-  speechBubble,
-  sunsetScene,
-  surfboard,
-} from './decor';
+  CLEARANCE_DAYS,
+  clearanceStamp,
+  dataRow,
+  inkedStamp,
+  machineReadableZone,
+  mrzLines,
+  photoClip,
+  photoPanel,
+} from './document';
 import {
   dashedLine,
   drawText,
   drawTextFitted,
   fillRoundRect,
+  roundRectPath,
   star,
   strokeRoundRect,
   type Ctx,
@@ -38,14 +42,13 @@ export interface CardData {
   name: string;
   role: string;
   shipping: string;
-  beachBag: string[];
   builderClass: string;
   builderId: string;
 }
 
 export interface RenderOptions {
   data: CardData;
-  /** Decoded photo; when absent a placeholder frame is drawn instead. */
+  /** Decoded photo; when absent a placeholder panel is drawn instead. */
   photo?: ImageBitmap | null;
   transform: Transform;
   /** QR modules as a square boolean matrix, or null to omit the QR block. */
@@ -55,630 +58,399 @@ export interface RenderOptions {
 const W = CARD.width;
 const H = CARD.height;
 
-/**
- * Vertical rhythm, as fractions of card height. Named so the relationships
- * between bands stay legible when one of them needs to move.
- */
+/** Vertical rhythm, as fractions of card height. */
 const Y = {
-  stamps: 0.052,
-  wordmark: 0.185,
-  photoCentre: 0.4235,
-  nameBanner: 0.606,
-  roleBanner: 0.674,
-  stripTop: 0.720,
-  stripBottom: 0.842,
-  qr: 0.849,
-  sunset: 0.896,
-  footerBanner: 0.934,
+  kicker: 0.042,
+  wordmark: 0.098,
+  typeRow: 0.163,
+  body: 0.213,
+  clearance: 0.632,
+  mrz: 0.745,
+  sunset: 0.838,
+  footer: 0.924,
 } as const;
 
-/** Photo frame geometry. The ring radius is measured from the reference art. */
+/** The passport photo panel. 3:4, as photo booths and passports use. */
 const PHOTO = {
-  cx: W * 0.5,
-  cy: H * Y.photoCentre,
-  /** Outer edge of the red ring. */
-  outerRadius: W * 0.2324,
+  x: W * 0.072,
+  y: H * Y.body,
+  width: W * 0.315,
+  height: H * 0.24,
+  radius: W * 0.022,
 };
-/** Radius of the visible photo, inside both rings. */
-const PHOTO_RADIUS = PHOTO.outerRadius * 0.885;
 
 export function renderCard(ctx: Ctx, options: RenderOptions): void {
   ctx.save();
   ctx.clearRect(0, 0, W, H);
 
-  drawCardBase(ctx);
-  drawTopFurniture(ctx);
-  drawWordmark(ctx);
-  drawSideRails(ctx);
+  drawPage(ctx);
+  drawHeader(ctx, options.data);
   drawScenery(ctx);
   drawPhoto(ctx, options.photo ?? null, options.transform);
-  drawPhotoAdornments(ctx);
-  drawBanners(ctx, options.data);
-  drawInfoStrip(ctx, options.data);
-  drawFooter(ctx, options.data, options.qr ?? null);
+  drawFields(ctx, options.data);
+  drawQrBlock(ctx, options.qr ?? null);
+  drawClearance(ctx);
+  drawFooter(ctx, options.data);
 
   ctx.restore();
 }
 
-/** Deep green border with the cream interior it frames. */
-function drawCardBase(ctx: Ctx): void {
-  fillRoundRect(ctx, { x: 0, y: 0, width: W, height: H }, W * 0.052, COLORS.green);
+/** Deep green cover with the cream data page it holds. */
+function drawPage(ctx: Ctx): void {
+  fillRoundRect(ctx, { x: 0, y: 0, width: W, height: H }, W * 0.05, COLORS.green);
 
-  const inset = W * 0.023;
+  const inset = W * 0.024;
   fillRoundRect(
     ctx,
     { x: inset, y: inset, width: W - inset * 2, height: H - inset * 2 },
-    W * 0.036,
+    W * 0.034,
     COLORS.cream,
   );
 
-  // Hairline keyline just inside the cream, which gives the badge its printed feel.
+  // Guilloche-style hairlines: the fine repeating pattern printed across a real
+  // document page. Kept very low contrast so it reads as security printing
+  // rather than as decoration competing with the data.
+  ctx.save();
+  ctx.beginPath();
+  roundRectPath(
+    ctx,
+    { x: inset, y: inset, width: W - inset * 2, height: H - inset * 2 },
+    W * 0.034,
+  );
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(4,44,18,0.055)';
+  ctx.lineWidth = 1.1;
+  for (let i = -H; i < W + H; i += 13) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + H, H);
+    ctx.stroke();
+  }
+  ctx.restore();
+
   const keyline = inset + W * 0.013;
   strokeRoundRect(
     ctx,
     { x: keyline, y: keyline, width: W - keyline * 2, height: H - keyline * 2 },
-    W * 0.028,
-    'rgba(4,44,18,0.18)',
+    W * 0.026,
+    'rgba(4,44,18,0.2)',
     2,
   );
 }
 
-/** Top tag, postage stamp and rubber stamp. */
-function drawTopFurniture(ctx: Ctx): void {
-  // "HH GOA 2026" tag straddling the top border.
-  const tag = { width: W * 0.145, height: H * 0.062 };
-  const tagRect = { x: (W - tag.width) / 2, y: H * 0.005, width: tag.width, height: tag.height };
-  fillRoundRect(ctx, tagRect, W * 0.016, COLORS.pink);
-  strokeRoundRect(ctx, tagRect, W * 0.016, COLORS.cream, 3);
-
-  const tagCx = W / 2;
-  drawText(ctx, 'HH', tagCx, tagRect.y + tag.height * 0.26, {
-    family: FONTS.sans,
-    weight: 800,
-    size: W * 0.031,
-    color: COLORS.cream,
-    tracking: 1,
-  });
-  drawText(ctx, 'GOA', tagCx, tagRect.y + tag.height * 0.53, {
-    family: FONTS.sans,
-    weight: 800,
-    size: W * 0.031,
-    color: COLORS.cream,
-    tracking: 1,
-  });
-  drawText(ctx, EVENT.year, tagCx, tagRect.y + tag.height * 0.79, {
+/** Kicker, wordmark, and the document type row. */
+function drawHeader(ctx: Ctx, data: CardData): void {
+  drawText(ctx, 'REPUBLIC OF BUILDERS', W * 0.5, H * Y.kicker, {
     family: FONTS.mono,
     weight: 700,
-    size: W * 0.024,
-    color: COLORS.yellow,
-    tracking: 1,
+    size: W * 0.022,
+    color: COLORS.pink,
+    tracking: 5,
   });
 
-  postageStamp(ctx, W * 0.062, H * Y.stamps, W * 0.16, H * 0.072);
-  circularStamp(ctx, W * 0.845, H * (Y.stamps + 0.036), W * 0.082);
-}
-
-/** HACKER गोवा HOUSE lockup — the wordmark spans nearly the full card width. */
-function drawWordmark(ctx: Ctx): void {
-  const baseline = H * Y.wordmark;
-
-  // The event wordmark is a condensed Didone; Bodoni Moda is squeezed
-  // horizontally to approximate that cut rather than substituting another face.
+  // HACKER गोवा HOUSE lockup. Bodoni Moda squeezed horizontally approximates
+  // the condensed Didone of the event wordmark rather than substituting a
+  // different face.
   const display = {
     family: FONTS.display,
     weight: 900,
-    size: W * 0.132,
+    size: W * 0.116,
     color: COLORS.green,
     squeeze: 0.76,
     align: 'center' as const,
   };
+  drawTextFitted(ctx, 'HACKER', W * 0.268, H * Y.wordmark, W * 0.33, display, W * 0.07);
+  drawTextFitted(ctx, 'HOUSE', W * 0.735, H * Y.wordmark, W * 0.33, display, W * 0.07);
 
-  // The two words sit either side of centre so the गोवा sticker can overlap the
-  // join, exactly as in the event artwork. Each is fitted to its half of the
-  // card so the lockup can never run past the cream into the border.
-  const halfWidth = W * 0.4;
-  drawTextFitted(ctx, 'HACKER', W * 0.253, baseline, halfWidth, display, W * 0.09);
-  drawTextFitted(ctx, 'HOUSE', W * 0.752, baseline, halfWidth, display, W * 0.09);
-
-  // गोवा sticker: rotated lozenge with yellow Devanagari on pink. It straddles
-  // the gap between the two words, clipping the R only slightly, as in the art.
   ctx.save();
-  ctx.translate(W * 0.523, baseline + H * 0.001);
+  ctx.translate(W * 0.513, H * (Y.wordmark + 0.001));
   ctx.rotate(-0.1);
-  const sticker = { x: -W * 0.082, y: -H * 0.029, width: W * 0.164, height: H * 0.058 };
+  const sticker = { x: -W * 0.073, y: -H * 0.026, width: W * 0.146, height: H * 0.052 };
   fillRoundRect(ctx, sticker, sticker.height * 0.4, COLORS.pink);
-  strokeRoundRect(ctx, sticker, sticker.height * 0.4, COLORS.yellow, 5);
+  strokeRoundRect(ctx, sticker, sticker.height * 0.4, COLORS.yellow, 4.5);
   drawText(ctx, 'गोवा', 0, H * 0.002, {
     family: FONTS.devanagari,
     weight: 800,
-    size: W * 0.068,
+    size: W * 0.058,
     color: COLORS.yellow,
   });
   ctx.restore();
+
+  // Double rule under the wordmark, as on a document header.
+  const ruleY = H * 0.134;
+  ctx.strokeStyle = 'rgba(4,44,18,0.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.072, ruleY);
+  ctx.lineTo(W * 0.928, ruleY);
+  ctx.stroke();
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(W * 0.072, ruleY + H * 0.005);
+  ctx.lineTo(W * 0.928, ruleY + H * 0.005);
+  ctx.stroke();
+
+  postageStamp(ctx, W * 0.782, H * 0.1485, W * 0.14, H * 0.058);
+
+  // Type / code / number, the way a passport heads its data page.
+  const cells: Array<[string, string, number]> = [
+    ['TYPE', 'B', 0.072],
+    ['CODE', 'GOA', 0.2],
+    ['PASSPORT No.', data.builderId, 0.42],
+  ];
+  for (const [label, value, x] of cells) {
+    drawText(ctx, label, W * x, H * Y.typeRow, {
+      family: FONTS.mono,
+      weight: 700,
+      size: W * 0.018,
+      color: COLORS.pink,
+      tracking: 1.2,
+      align: 'left',
+    });
+    drawTextFitted(
+      ctx,
+      value,
+      W * x,
+      H * (Y.typeRow + 0.026),
+      W * 0.34,
+      {
+        family: FONTS.mono,
+        weight: 700,
+        size: W * 0.031,
+        color: COLORS.green,
+        tracking: 1,
+        align: 'left',
+      },
+      W * 0.019,
+    );
+  }
 }
 
-/** Rotated date and location rails down the card's left and right edges. */
-function drawSideRails(ctx: Ctx): void {
-  const rail = {
-    family: FONTS.mono,
-    weight: 700,
-    size: W * 0.025,
-    color: COLORS.green,
-    tracking: 2.6,
-  } as const;
-
-  // Pushed tight to the card edge so the badges and scenery clear them.
-  ctx.save();
-  ctx.translate(W * 0.047, H * 0.40);
-  ctx.rotate(-Math.PI / 2);
-  drawText(ctx, EVENT.dates, 0, 0, rail);
-  ctx.restore();
-
-  ctx.save();
-  ctx.translate(W * 0.953, H * 0.40);
-  ctx.rotate(Math.PI / 2);
-  drawText(ctx, EVENT.city, 0, 0, rail);
-  ctx.restore();
-}
-
-/** Foliage, props and sparkles filling the space around the portrait. */
+/** Marginal scenery, kept light so the card still reads as a document. */
 function drawScenery(ctx: Ctx): void {
-  // Palms tucked into the upper corners, leaning away from the card edge.
-  palmTree(ctx, W * 0.125, H * 0.318, (H * 0.082) / 100);
-  palmTree(ctx, W * 0.885, H * 0.303, (H * 0.072) / 100, -1);
+  palmTree(ctx, W * 0.945, H * 0.315, (H * 0.055) / 100, -1);
+  palmTree(ctx, W * 0.055, H * 0.62, (H * 0.042) / 100);
 
-  star(ctx, W * 0.20, H * 0.248, W * 0.015, COLORS.pink);
-  star(ctx, W * 0.822, H * 0.238, W * 0.012, COLORS.yellowDeep);
-  star(ctx, W * 0.222, H * 0.545, W * 0.013, COLORS.yellowDeep);
-  star(ctx, W * 0.90, H * 0.565, W * 0.011, COLORS.pink);
+  surfboard(ctx, W * 0.945, H * 0.60, (H * 0.07) / 192, 0.22, COLORS.pink, COLORS.cream);
+  scooter(ctx, W * 0.7, H * 0.585, (H * 0.03) / 45);
 
-  // Surfboards leaning together on the left, house and scooter on the right.
-  surfboard(ctx, W * 0.098, H * 0.545, (H * 0.135) / 192, -0.22, COLORS.pink, COLORS.cream);
-  surfboard(ctx, W * 0.163, H * 0.554, (H * 0.118) / 192, 0.17, COLORS.yellow, COLORS.terracotta);
-
-  goanHouse(ctx, W * 0.835, H * 0.502, (H * 0.098) / 108);
-  scooter(ctx, W * 0.735, H * 0.552, (H * 0.034) / 45);
+  star(ctx, W * 0.947, H * 0.20, W * 0.012, COLORS.yellowDeep);
+  star(ctx, W * 0.055, H * 0.19, W * 0.01, COLORS.pink);
 }
 
-/** The circular portrait with its red and yellow rings. */
+/** The passport photo panel. */
 function drawPhoto(ctx: Ctx, photo: ImageBitmap | null, transform: Transform): void {
-  const { cx, cy, outerRadius } = PHOTO;
-
-  // Rings drawn outward from the image so the strokes never overlap it.
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);
-  ctx.fillStyle = COLORS.red;
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, outerRadius * 0.945, 0, Math.PI * 2);
-  ctx.fillStyle = COLORS.yellow;
-  ctx.fill();
-  ctx.restore();
+  photoPanel(ctx, PHOTO, PHOTO.radius);
+  const { rect, radius } = photoClip(PHOTO, PHOTO.radius);
 
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, PHOTO_RADIUS, 0, Math.PI * 2);
+  roundRectPath(ctx, rect, radius);
   ctx.clip();
 
   if (photo) {
-    const frame = PHOTO_RADIUS * 2;
-    const rect = coverRect({ width: photo.width, height: photo.height }, frame, transform);
+    // The crop maths works against a square frame; using the panel's longer
+    // edge guarantees cover on both axes, and the clip trims the overhang.
+    const frame = Math.max(rect.width, rect.height);
+    const box = coverRect({ width: photo.width, height: photo.height }, frame, transform);
     ctx.drawImage(
       photo,
-      cx - PHOTO_RADIUS + rect.x,
-      cy - PHOTO_RADIUS + rect.y,
-      rect.width,
-      rect.height,
+      rect.x + (rect.width - frame) / 2 + box.x,
+      rect.y + (rect.height - frame) / 2 + box.y,
+      box.width,
+      box.height,
     );
   } else {
-    // Placeholder: a beach vignette, so an empty card still looks composed.
-    ctx.fillStyle = COLORS.sky;
-    ctx.fillRect(cx - PHOTO_RADIUS, cy - PHOTO_RADIUS, PHOTO_RADIUS * 2, PHOTO_RADIUS * 2);
-    ctx.fillStyle = COLORS.sand;
-    ctx.fillRect(cx - PHOTO_RADIUS, cy + PHOTO_RADIUS * 0.28, PHOTO_RADIUS * 2, PHOTO_RADIUS * 0.72);
-    ctx.fillStyle = COLORS.yellow;
+    ctx.fillStyle = COLORS.creamDim;
+    ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+    // Photo-booth silhouette, so an empty panel still looks intentional.
+    ctx.fillStyle = 'rgba(4,44,18,0.28)';
     ctx.beginPath();
-    ctx.arc(cx + PHOTO_RADIUS * 0.34, cy - PHOTO_RADIUS * 0.32, PHOTO_RADIUS * 0.2, 0, Math.PI * 2);
+    ctx.arc(rect.x + rect.width / 2, rect.y + rect.height * 0.4, rect.width * 0.19, 0, Math.PI * 2);
     ctx.fill();
-    palmTree(ctx, cx - PHOTO_RADIUS * 0.3, cy + PHOTO_RADIUS * 0.32, PHOTO_RADIUS * 0.007);
-    drawText(ctx, 'YOUR PHOTO', cx, cy + PHOTO_RADIUS * 0.66, {
+    ctx.beginPath();
+    ctx.ellipse(
+      rect.x + rect.width / 2,
+      rect.y + rect.height * 1.02,
+      rect.width * 0.36,
+      rect.height * 0.34,
+      0,
+      Math.PI,
+      Math.PI * 2,
+    );
+    ctx.fill();
+    drawText(ctx, 'PHOTO', rect.x + rect.width / 2, rect.y + rect.height * 0.86, {
       family: FONTS.mono,
       weight: 700,
-      size: PHOTO_RADIUS * 0.12,
-      color: COLORS.green,
+      size: rect.width * 0.11,
+      color: 'rgba(4,44,18,0.5)',
       tracking: 3,
     });
   }
 
   ctx.restore();
 
-  // Inner hairline tidies the clip edge against the yellow ring.
   ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, PHOTO_RADIUS, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(4,44,18,0.3)';
-  ctx.lineWidth = 3;
+  roundRectPath(ctx, rect, radius);
+  ctx.strokeStyle = 'rgba(4,44,18,0.35)';
+  ctx.lineWidth = 2.5;
   ctx.stroke();
   ctx.restore();
 }
 
-/** BUILD / SHIP / REPEAT badges and the LET'S BUILD! callout. */
-function drawPhotoAdornments(ctx: Ctx): void {
-  const words = ['BUILD', 'SHIP', 'REPEAT'];
-  const fills = [COLORS.yellow, COLORS.pink, COLORS.cream];
-  const inks = [COLORS.green, COLORS.cream, COLORS.green];
+/** The printed data rows beside the photo. */
+function drawFields(ctx: Ctx, data: CardData): void {
+  const x = W * 0.435;
+  const maxWidth = W * 0.5;
+  const style = {
+    labelSize: W * 0.018,
+    valueSize: W * 0.038,
+    minValueSize: W * 0.019,
+  };
 
-  words.forEach((word, index) => {
-    const rect = {
-      x: W * 0.082,
-      y: H * (0.398 + index * 0.045),
-      width: W * 0.155,
-      height: H * 0.034,
-    };
-    ctx.save();
-    ctx.translate(rect.x + rect.width / 2, rect.y + rect.height / 2);
-    ctx.rotate(-0.05);
-    const local = {
-      x: -rect.width / 2,
-      y: -rect.height / 2,
-      width: rect.width,
-      height: rect.height,
-    };
-    fillRoundRect(ctx, local, rect.height * 0.34, fills[index]);
-    strokeRoundRect(ctx, local, rect.height * 0.34, COLORS.green, 3.4);
-    drawTextFitted(ctx, word, 0, 0, rect.width * 0.8, {
-      family: FONTS.sans,
-      weight: 800,
-      size: W * 0.029,
-      color: inks[index],
-      tracking: 1.4,
-    });
-    ctx.restore();
-  });
-
-  const bubble = { x: W * 0.735, y: H * 0.345, width: W * 0.195, height: H * 0.042 };
-  speechBubble(ctx, bubble, COLORS.yellow, 'left');
-  drawTextFitted(
-    ctx,
-    "LET'S BUILD!",
-    bubble.x + bubble.width / 2,
-    bubble.y + bubble.height / 2,
-    bubble.width * 0.82,
-    {
-      family: FONTS.sans,
-      weight: 800,
-      size: W * 0.029,
-      color: COLORS.green,
-    },
-  );
-}
-
-/** Name and role banners. */
-function drawBanners(ctx: Ctx, data: CardData): void {
-  const nameRect = { x: W * 0.105, y: H * Y.nameBanner, width: W * 0.79, height: H * 0.05 };
-  fillRoundRect(ctx, nameRect, nameRect.height * 0.32, COLORS.green);
-  strokeRoundRect(ctx, nameRect, nameRect.height * 0.32, COLORS.cream, 3.5);
-  drawTextFitted(
-    ctx,
-    data.name.trim().toUpperCase() || 'YOUR NAME',
-    W * 0.5,
-    nameRect.y + nameRect.height * 0.54,
-    nameRect.width * 0.87,
-    {
-      family: FONTS.sans,
-      weight: 800,
-      size: W * 0.05,
-      color: COLORS.cream,
-      tracking: 1.6,
-    },
-    W * 0.024,
-  );
-
-  const roleRect = { x: W * 0.16, y: H * Y.roleBanner, width: W * 0.68, height: H * 0.036 };
-  fillRoundRect(ctx, roleRect, roleRect.height * 0.4, COLORS.cream);
-  strokeRoundRect(ctx, roleRect, roleRect.height * 0.4, COLORS.yellowDeep, 4);
-
-  // A small bolt sits before the role, matching the event artwork.
-  drawBolt(ctx, roleRect.x + roleRect.width * 0.08, roleRect.y + roleRect.height * 0.5, W * 0.022);
-
-  drawTextFitted(
-    ctx,
-    (data.role.trim() || 'BUILDER').toUpperCase(),
-    W * 0.53,
-    roleRect.y + roleRect.height * 0.54,
-    roleRect.width * 0.72,
-    {
-      family: FONTS.mono,
-      weight: 700,
-      size: W * 0.027,
-      color: COLORS.green,
-      tracking: 1.8,
-    },
-    W * 0.015,
-  );
-}
-
-function drawBolt(ctx: Ctx, cx: number, cy: number, size: number): void {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.fillStyle = COLORS.yellowDeep;
-  ctx.strokeStyle = COLORS.green;
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(size * 0.15, -size * 0.6);
-  ctx.lineTo(-size * 0.45, size * 0.1);
-  ctx.lineTo(-size * 0.05, size * 0.1);
-  ctx.lineTo(-size * 0.2, size * 0.6);
-  ctx.lineTo(size * 0.45, -size * 0.15);
-  ctx.lineTo(size * 0.05, -size * 0.15);
-  ctx.closePath();
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
-}
-
-/** Three-column strip: builder class, beach bag, currently shipping. */
-function drawInfoStrip(ctx: Ctx, data: CardData): void {
-  const top = H * Y.stripTop;
-  const bottom = H * Y.stripBottom;
-  const left = W * 0.062;
-  const right = W * 0.938;
-  const columnWidth = (right - left) / 3;
-
-  for (const index of [1, 2]) {
-    const x = left + columnWidth * index;
-    dashedLine(ctx, x, top + H * 0.004, x, bottom - H * 0.008, 'rgba(4,44,18,0.4)', 2, [5, 7]);
-  }
-
-  const heading = {
-    family: FONTS.mono,
-    weight: 700,
-    size: W * 0.0205,
-    color: COLORS.pink,
-    tracking: 1.2,
-  } as const;
-
-  const columns: Array<{ label: string; render: (cx: number, width: number) => void }> = [
-    {
-      label: 'BUILDER CLASS',
-      render: (cx, width) => {
-        data.builderClass.split(' ').forEach((word, index) => {
-          drawTextFitted(
-            ctx,
-            word,
-            cx,
-            top + H * 0.05 + index * H * 0.028,
-            width,
-            {
-              family: FONTS.sans,
-              weight: 800,
-              size: W * 0.032,
-              color: COLORS.green,
-              tracking: 0.5,
-            },
-            W * 0.016,
-          );
-        });
-      },
-    },
-    {
-      label: 'BEACH BAG',
-      render: (cx, width) => {
-        data.beachBag.slice(0, 3).forEach((item, index) => {
-          const y = top + H * 0.046 + index * H * 0.030;
-          drawBagIcon(ctx, cx - width * 0.36, y, W * 0.021, index);
-          drawTextFitted(
-            ctx,
-            item.toUpperCase(),
-            cx - width * 0.22,
-            y,
-            width * 0.6,
-            {
-              family: FONTS.mono,
-              weight: 400,
-              size: W * 0.0225,
-              color: COLORS.green,
-              tracking: 0.6,
-              align: 'left',
-            },
-            W * 0.013,
-          );
-        });
-      },
-    },
-    {
-      label: 'CURRENTLY SHIPPING',
-      render: (cx, width) => {
-        const text = (data.shipping.trim() || 'SOMETHING NEW').toUpperCase();
-        wrapWords(text, 2).forEach((line, index) => {
-          drawTextFitted(
-            ctx,
-            line,
-            cx,
-            top + H * 0.05 + index * H * 0.028,
-            width,
-            {
-              family: FONTS.sans,
-              weight: 800,
-              size: W * 0.03,
-              color: COLORS.pink,
-              tracking: 0.4,
-            },
-            W * 0.015,
-          );
-        });
-      },
-    },
+  const rows: Array<[string, string, string?]> = [
+    ['NAME / नाम', data.name.trim().toUpperCase() || 'YOUR NAME'],
+    ['STACK / ROLE', data.role.trim().toUpperCase() || 'BUILDER'],
+    ['BUILDER CLASS', data.builderClass, COLORS.pink],
+    ['NOW SHIPPING', data.shipping.trim().toUpperCase() || 'SOMETHING NEW'],
   ];
 
-  columns.forEach((column, index) => {
-    const cx = left + columnWidth * index + columnWidth / 2;
-    drawText(ctx, `+ ${column.label} +`, cx, top + H * 0.013, heading);
-    column.render(cx, columnWidth * 0.88);
+  rows.forEach(([label, value, color], index) => {
+    dataRow(ctx, x, H * (Y.body + 0.012) + index * H * 0.072, maxWidth, label, value, {
+      ...style,
+      valueColor: color,
+    });
   });
+
+  // Validity and issuing authority sit under the photo, across the full width.
+  const footY = H * 0.505;
+  dataRow(ctx, W * 0.435, footY, W * 0.22, 'VALID', EVENT.dates, {
+    labelSize: W * 0.018,
+    valueSize: W * 0.026,
+    minValueSize: W * 0.016,
+  });
+  dataRow(ctx, W * 0.7, footY, W * 0.23, 'AUTHORITY', EVENT.organiser, {
+    labelSize: W * 0.018,
+    valueSize: W * 0.026,
+    minValueSize: W * 0.016,
+  });
+
+  // The stamp is pressed across the lower corner of the photo, the way a real
+  // document is franked over its portrait, and stops short of the data column
+  // so no field is ever obscured.
+  inkedStamp(ctx, W * 0.305, H * 0.424, W * 0.103, -0.28, COLORS.red);
 }
 
-/** Tiny glyphs beside each beach-bag entry, cycled by index. */
-function drawBagIcon(ctx: Ctx, cx: number, cy: number, size: number, index: number): void {
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.strokeStyle = COLORS.green;
-  ctx.lineWidth = 2;
+/** QR block under the photo. */
+function drawQrBlock(ctx: Ctx, qr: boolean[][] | null): void {
+  const size = W * 0.115;
+  const x = PHOTO.x;
+  const y = H * 0.474;
 
-  if (index % 3 === 0) {
-    ctx.fillStyle = COLORS.greenLight;
-    ctx.beginPath();
-    ctx.arc(0, size * 0.15, size * 0.45, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(size * 0.1, -size * 0.2);
-    ctx.lineTo(size * 0.5, -size * 0.8);
-    ctx.stroke();
-  } else if (index % 3 === 1) {
-    ctx.fillStyle = COLORS.sky;
-    ctx.beginPath();
-    ctx.rect(-size * 0.5, -size * 0.45, size, size * 0.72);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-size * 0.68, size * 0.42);
-    ctx.lineTo(size * 0.68, size * 0.42);
-    ctx.stroke();
-  } else {
-    ctx.beginPath();
-    ctx.arc(0, size * 0.05, size * 0.46, Math.PI, 0);
-    ctx.stroke();
-    ctx.fillStyle = COLORS.pink;
-    for (const dx of [-size * 0.46, size * 0.46]) {
-      ctx.beginPath();
-      ctx.rect(dx - size * 0.13, size * 0.02, size * 0.26, size * 0.42);
-      ctx.fill();
-      ctx.stroke();
+  if (qr && qr.length > 0) {
+    const modules = qr.length;
+    const quiet = 2;
+    const cell = size / (modules + quiet * 2);
+
+    ctx.save();
+    ctx.fillStyle = COLORS.cream;
+    ctx.fillRect(x, y, size, size);
+    ctx.fillStyle = COLORS.green;
+    for (let row = 0; row < modules; row += 1) {
+      for (let column = 0; column < modules; column += 1) {
+        if (!qr[row][column]) continue;
+        // Slight overdraw closes hairline seams between adjacent modules.
+        ctx.fillRect(x + (column + quiet) * cell, y + (row + quiet) * cell, cell + 0.5, cell + 0.5);
+      }
     }
+    ctx.restore();
   }
 
-  ctx.restore();
-}
-
-/** QR block, builder ID, sunset band and the hashtag footer. */
-function drawFooter(ctx: Ctx, data: CardData, qr: boolean[][] | null): void {
-  const stripBottom = H * Y.stripBottom;
-  dashedLine(ctx, W * 0.062, stripBottom, W * 0.938, stripBottom, 'rgba(4,44,18,0.4)', 2, [5, 7]);
-
-  // QR sits left, builder ID right, sharing one band above the sunset.
-  const qrSize = W * 0.085;
-  const qrX = W * 0.075;
-  const qrY = H * Y.qr;
-  if (qr && qr.length > 0) drawQr(ctx, qr, qrX, qrY, qrSize);
-
-  drawText(ctx, 'SCAN TO BUILD YOURS', qrX + qrSize + W * 0.02, qrY + H * 0.013, {
-    family: FONTS.mono,
-    weight: 400,
-    size: W * 0.0155,
-    color: 'rgba(4,44,18,0.6)',
-    tracking: 0.6,
-    align: 'left',
-  });
-  drawText(ctx, EVENT.organiser, qrX + qrSize + W * 0.02, qrY + H * 0.034, {
+  drawText(ctx, 'SCAN TO ISSUE', x + size + W * 0.018, y + H * 0.018, {
     family: FONTS.mono,
     weight: 700,
     size: W * 0.017,
-    color: 'rgba(4,44,18,0.6)',
-    tracking: 0.6,
+    color: COLORS.green,
+    tracking: 1,
     align: 'left',
   });
-
-  drawText(ctx, 'BUILDER ID', W * 0.845, qrY + H * 0.012, {
+  drawText(ctx, 'YOUR OWN', x + size + W * 0.018, y + H * 0.037, {
     family: FONTS.mono,
     weight: 700,
-    size: W * 0.02,
+    size: W * 0.017,
     color: COLORS.green,
-    tracking: 1.6,
+    tracking: 1,
+    align: 'left',
   });
-  drawTextFitted(
+}
+
+/** The four event days, stamped as entry clearance. */
+function drawClearance(ctx: Ctx): void {
+  const top = H * Y.clearance;
+
+  dashedLine(ctx, W * 0.072, top - H * 0.012, W * 0.928, top - H * 0.012, 'rgba(4,44,18,0.4)', 2, [
+    5, 7,
+  ]);
+
+  drawText(ctx, 'ENTRY CLEARANCE', W * 0.072, top + H * 0.012, {
+    family: FONTS.mono,
+    weight: 700,
+    size: W * 0.019,
+    color: COLORS.pink,
+    tracking: 2,
+    align: 'left',
+  });
+  drawText(ctx, '4 DAYS · ONE RHYTHM', W * 0.928, top + H * 0.012, {
+    family: FONTS.mono,
+    weight: 400,
+    size: W * 0.019,
+    color: 'rgba(4,44,18,0.6)',
+    tracking: 1,
+    align: 'right',
+  });
+
+  const colors = [COLORS.yellowDeep, COLORS.pink, COLORS.red, COLORS.greenLight];
+  const rotations = [-0.035, 0.028, -0.02, 0.038];
+  const gap = W * 0.018;
+  const width = (W * 0.856 - gap * 3) / 4;
+  const height = H * 0.062;
+
+  CLEARANCE_DAYS.forEach((entry, index) => {
+    clearanceStamp(
+      ctx,
+      { x: W * 0.072 + index * (width + gap), y: top + H * 0.026, width, height },
+      entry.day,
+      entry.name,
+      colors[index],
+      rotations[index],
+    );
+  });
+}
+
+/** Machine-readable zone, sunset band and the hashtag footer. */
+function drawFooter(ctx: Ctx, data: CardData): void {
+  machineReadableZone(
     ctx,
-    data.builderId,
-    W * 0.845,
-    qrY + H * 0.038,
-    W * 0.24,
-    {
-      family: FONTS.mono,
-      weight: 700,
-      size: W * 0.027,
-      color: COLORS.pink,
-      tracking: 1,
-    },
-    W * 0.016,
+    { x: W * 0.072, y: H * Y.mrz, width: W * 0.856, height: H * 0.072 },
+    mrzLines(data.name, data.role, data.builderId),
   );
 
-  // Sunset band, clipped to a rounded window.
-  const scene = { x: W * 0.062, y: H * Y.sunset, width: W * 0.876, height: H * 0.062 };
+  const scene = { x: W * 0.072, y: H * Y.sunset, width: W * 0.856, height: H * 0.062 };
   ctx.save();
-  ctx.beginPath();
-  if (typeof ctx.roundRect === 'function') {
-    ctx.roundRect(scene.x, scene.y, scene.width, scene.height, W * 0.02);
-  } else {
-    ctx.rect(scene.x, scene.y, scene.width, scene.height);
-  }
+  roundRectPath(ctx, scene, W * 0.018);
   ctx.clip();
   sunsetScene(ctx, scene);
   ctx.restore();
 
-  // Hashtag banner overlapping the bottom of the sunset band.
-  const banner = { x: W * 0.235, y: H * Y.footerBanner, width: W * 0.53, height: H * 0.038 };
+  const banner = { x: W * 0.245, y: H * Y.footer, width: W * 0.51, height: H * 0.038 };
   fillRoundRect(ctx, banner, banner.height * 0.5, COLORS.pink);
   strokeRoundRect(ctx, banner, banner.height * 0.5, COLORS.cream, 3.5);
-  drawTextFitted(
-    ctx,
-    EVENT.hashtag,
-    W * 0.5,
-    banner.y + banner.height * 0.54,
-    banner.width * 0.86,
-    {
-      family: FONTS.sans,
-      weight: 800,
-      size: W * 0.034,
-      color: COLORS.cream,
-      tracking: 2.6,
-    },
-  );
-}
-
-/** Renders a QR matrix as filled modules with a quiet zone. */
-function drawQr(ctx: Ctx, matrix: boolean[][], x: number, y: number, size: number): void {
-  const modules = matrix.length;
-  // A quiet zone is required for reliable scanning.
-  const quiet = 2;
-  const cell = size / (modules + quiet * 2);
-
-  ctx.save();
-  ctx.fillStyle = COLORS.cream;
-  ctx.fillRect(x, y, size, size);
-  ctx.fillStyle = COLORS.green;
-  for (let row = 0; row < modules; row += 1) {
-    for (let col = 0; col < modules; col += 1) {
-      if (!matrix[row][col]) continue;
-      // Slight overdraw closes hairline seams between adjacent modules.
-      ctx.fillRect(x + (col + quiet) * cell, y + (row + quiet) * cell, cell + 0.5, cell + 0.5);
-    }
-  }
-  ctx.restore();
-}
-
-/** Splits text into at most `maxLines` roughly balanced lines. */
-function wrapWords(text: string, maxLines: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) return words.length ? words : [text];
-
-  const perLine = Math.ceil(words.length / maxLines);
-  const lines: string[] = [];
-  for (let i = 0; i < words.length; i += perLine) {
-    lines.push(words.slice(i, i + perLine).join(' '));
-  }
-  return lines.slice(0, maxLines);
+  drawTextFitted(ctx, EVENT.hashtag, W * 0.5, banner.y + banner.height * 0.54, banner.width * 0.86, {
+    family: FONTS.sans,
+    weight: 800,
+    size: W * 0.033,
+    color: COLORS.cream,
+    tracking: 2.6,
+  });
 }
 
 /**
@@ -686,19 +458,17 @@ function wrapWords(text: string, maxLines: number): string[] {
  *
  * The compositor must not run before this resolves: canvas would silently
  * substitute a fallback face and every measured width would be wrong, which
- * shows up as misaligned banners rather than an obvious error.
+ * shows up as misaligned rows rather than an obvious error.
  */
 export async function waitForFonts(): Promise<void> {
   if (typeof document === 'undefined' || !document.fonts) return;
   try {
-    // Load the exact faces the card uses; `ready` alone can resolve before a
-    // face that has not yet been requested has been fetched.
     await Promise.all([
-      document.fonts.load(`900 ${W * 0.15}px "Bodoni Moda"`),
-      document.fonts.load(`800 ${W * 0.068}px "Baloo 2"`, 'गोवा'),
-      document.fonts.load(`700 ${W * 0.027}px "Space Mono"`),
-      document.fonts.load(`400 ${W * 0.0225}px "Space Mono"`),
-      document.fonts.load(`800 ${W * 0.05}px "Archivo"`),
+      document.fonts.load(`900 ${W * 0.116}px "Bodoni Moda"`),
+      document.fonts.load(`800 ${W * 0.058}px "Baloo 2"`, 'गोवा'),
+      document.fonts.load(`700 ${W * 0.031}px "Space Mono"`),
+      document.fonts.load(`400 ${W * 0.019}px "Space Mono"`),
+      document.fonts.load(`800 ${W * 0.038}px "Archivo"`),
     ]);
     await document.fonts.ready;
   } catch {

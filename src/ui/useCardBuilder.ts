@@ -15,43 +15,28 @@ import {
   transformForFace,
   type Transform,
 } from '../card/geometry';
-import { deriveIdentity } from '../card/builderClass';
+import { deriveBuilderClass, mintBuilderId } from '../card/builderClass';
 import { renderCard, waitForFonts, type CardData } from '../card/renderCard';
 import { qrMatrix } from '../card/qr';
 import { CARD } from '../brand/tokens';
 
-/** Default kit, pre-filled so an untouched card still looks complete. */
-export const BEACH_BAG_OPTIONS = [
-  'Coconut',
-  'VS Code',
-  'Lo-fi beats',
-  'Cold brew',
-  'Neovim',
-  'Feni',
-  'Mechanical keyboard',
-  'Sunscreen',
-  'Noise-cancelling',
-  'Prawn curry',
-  'Terminal',
-  'Hammock',
-] as const;
-
-const DEFAULT_BAG = ['Coconut', 'VS Code', 'Lo-fi beats'];
-
-/** The frame size the crop transform is expressed against. */
-const FRAME = CARD.width * 0.2324 * 0.885 * 2;
+/**
+ * The frame size the crop transform is expressed against.
+ *
+ * Matches the longer edge of the passport photo panel in renderCard, which is
+ * what the cover-fit maths is applied to.
+ */
+const FRAME = CARD.height * 0.24;
 
 export interface Fields {
   name: string;
   role: string;
   shipping: string;
-  beachBag: string[];
 }
 
 export interface CardBuilder {
   fields: Fields;
   setField: <K extends keyof Fields>(key: K, value: Fields[K]) => void;
-  toggleBagItem: (item: string) => void;
 
   photo: DecodedPhoto | null;
   photoBusy: boolean;
@@ -70,6 +55,8 @@ export interface CardBuilder {
 
   identity: { builderClass: string; builderId: string };
   rerollClass: () => void;
+  /** Issues a brand new passport number for the current card. */
+  reissueId: () => void;
 
   canvasRef: React.RefObject<HTMLCanvasElement>;
   /** True once fonts are ready and the first paint has happened. */
@@ -78,12 +65,7 @@ export interface CardBuilder {
 }
 
 export function useCardBuilder(): CardBuilder {
-  const [fields, setFields] = useState<Fields>({
-    name: '',
-    role: '',
-    shipping: '',
-    beachBag: DEFAULT_BAG,
-  });
+  const [fields, setFields] = useState<Fields>({ name: '', role: '', shipping: '' });
 
   const [photo, setPhoto] = useState<DecodedPhoto | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -91,6 +73,10 @@ export function useCardBuilder(): CardBuilder {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [transform, setTransform] = useState<Transform>(IDENTITY_TRANSFORM);
   const [variant, setVariant] = useState(0);
+  // Every card issued is its own document, so the number is minted per card
+  // rather than derived from the name: two builders called the same thing get
+  // different passports, as do two visits by the same person.
+  const [builderId, setBuilderId] = useState(mintBuilderId);
   const [fontsReady, setFontsReady] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -116,14 +102,16 @@ export function useCardBuilder(): CardBuilder {
     [],
   );
 
-  const identity = useMemo(() => deriveIdentity(fields.name, variant), [fields.name, variant]);
+  const identity = useMemo(
+    () => ({ builderClass: deriveBuilderClass(fields.name, variant), builderId }),
+    [fields.name, variant, builderId],
+  );
 
   const cardData = useMemo<CardData>(
     () => ({
       name: fields.name,
       role: fields.role,
       shipping: fields.shipping,
-      beachBag: fields.beachBag,
       ...identity,
     }),
     [fields, identity],
@@ -149,20 +137,6 @@ export function useCardBuilder(): CardBuilder {
     setFields((current) => ({ ...current, [key]: value }));
   }, []);
 
-  const toggleBagItem = useCallback((item: string) => {
-    setFields((current) => {
-      const chosen = current.beachBag.includes(item);
-      if (chosen) {
-        // Keep at least one, so the column never renders empty.
-        if (current.beachBag.length === 1) return current;
-        return { ...current, beachBag: current.beachBag.filter((entry) => entry !== item) };
-      }
-      // The card has room for three; adding a fourth drops the oldest.
-      const next = [...current.beachBag, item].slice(-3);
-      return { ...current, beachBag: next };
-    });
-  }, []);
-
   const acceptFile = useCallback(async (file: File | Blob) => {
     setPhotoBusy(true);
     setError(null);
@@ -180,6 +154,8 @@ export function useCardBuilder(): CardBuilder {
       previousBitmap.current?.close();
       previousBitmap.current = decoded.bitmap;
 
+      // A new photo means a new card, so it is issued a new number.
+      setBuilderId(mintBuilderId());
       setPhoto(decoded);
       setWarnings(decoded.warnings);
       setTransform(initial);
@@ -230,12 +206,12 @@ export function useCardBuilder(): CardBuilder {
 
   const resetTransform = useCallback(() => setTransform(IDENTITY_TRANSFORM), []);
   const rerollClass = useCallback(() => setVariant((v) => v + 1), []);
+  const reissueId = useCallback(() => setBuilderId(mintBuilderId()), []);
   const dismissError = useCallback(() => setError(null), []);
 
   return {
     fields,
     setField,
-    toggleBagItem,
     photo,
     photoBusy,
     error,
@@ -249,6 +225,7 @@ export function useCardBuilder(): CardBuilder {
     resetTransform,
     identity,
     rerollClass,
+    reissueId,
     canvasRef,
     ready: fontsReady,
     cardData,

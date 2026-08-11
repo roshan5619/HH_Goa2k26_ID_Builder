@@ -14,3 +14,6 @@ tests/fixtures/generated/
 
 # Local render previews used while matching the card to the reference art
 .preview/
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo

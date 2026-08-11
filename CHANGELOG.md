@@ -78,3 +78,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First public release, live on GitHub Pages.
 - README documenting the flow, the photo pipeline, the share paths and the
   deployment of both the app and the share service.
+
+## [2.0.0] - 2026-08-11
+
+### Changed
+
+- **Redesigned the card as a builder passport.** The badge layout has been
+  replaced with a travel-document one: a passport-photo panel, printed data
+  rows, a franking stamp across the photo corner, entry-clearance stamps for the
+  four event days, guilloche security hatching, and a machine-readable zone.
+- Passport numbers are now minted per card from `crypto.getRandomValues` in
+  Crockford base32, so every issued document is unique. Previously the number
+  was derived from the name, which meant two builders sharing a name shared an
+  id.
+
+### Removed
+
+- The beach-bag picker. Entry clearance ties the card to the event's actual four
+  days instead, and dropping the chips removes a step from the flow.
