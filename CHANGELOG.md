@@ -70,3 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   desktop, running against the production build.
 - Generated photo fixtures spanning the aspect ratios that break naive croppers.
 - ESLint configuration, CI workflow, Pages deploy workflow, and Dependabot.
+
+## [1.0.0] - 2026-08-11
+
+### Added
+
+- First public release, live on GitHub Pages.
+- README documenting the flow, the photo pipeline, the share paths and the
+  deployment of both the app and the share service.
