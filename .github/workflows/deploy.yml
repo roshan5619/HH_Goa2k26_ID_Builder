@@ -44,7 +44,7 @@ jobs:
           # enable link previews; the app works without it.
           VITE_SHARE_ORIGIN: ${{ vars.VITE_SHARE_ORIGIN }}
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       - uses: actions/upload-pages-artifact@v3
         with:
